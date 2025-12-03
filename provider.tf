@@ -11,5 +11,5 @@ terraform {
 
 provider "aws" {
   region  = var.aws_region
-  profile = "ecs-dev"   # matches AWS CLI profile
+  #profile = "ecs-dev"   # matches AWS CLI profile
 }
