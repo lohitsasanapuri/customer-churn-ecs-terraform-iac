@@ -1,12 +1,12 @@
-# Customer Churn FastAPI – AWS ECS Deployment (Terraform)
+# Customer Churn FastAPI – AWS ECS (Fargate) Deployment with Terraform
 
 ![Terraform](https://img.shields.io/badge/Terraform-IaC-623CE4?logo=terraform)
 ![AWS](https://img.shields.io/badge/AWS-Cloud-orange?logo=amazonaws)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi)
 
-This project demonstrates an **end-to-end, production-grade cloud deployment** of a **Customer Churn Prediction system** using modern DevOps and MLOps practices.
+A **production-style infrastructure project** that deploys a **Customer Churn Prediction API** on **AWS ECS (Fargate)** using **Terraform** with **remote state in S3** and **manual CI/CD via GitHub Actions**.
 
-It showcases how to **package a machine learning-powered FastAPI application**, deploy it on **AWS ECS (Fargate)** using **Terraform (IaC)**, expose it securely via an **Application Load Balancer (ALB)**, and operate it with **scalable, serverless infrastructure**—a setup commonly used in real-world enterprise environments.
+This repo focuses on **real-world DevOps patterns**: containerized ML inference, load-balanced access, IAM least privilege, immutable infrastructure, and state persistence across local and CI runs.
 
 ---
 
@@ -14,44 +14,41 @@ It showcases how to **package a machine learning-powered FastAPI application**, 
 
 * **Backend**: FastAPI + Gradio
 * **Containerization**: Docker
-* **Cloud Provider**: AWS
+* **Cloud**: AWS
 * **Compute**: ECS (Fargate)
 * **Networking**: VPC, Subnets, Internet Gateway
 * **Load Balancer**: Application Load Balancer (ALB)
 * **Logging**: CloudWatch Logs
 * **IaC**: Terraform
-* **CI/CD**: GitHub Actions
+* **State**: Amazon S3 (Remote Backend)
+* **CI/CD**: GitHub Actions (workflow_dispatch)
 
 ---
 
 ## 🏗 Architecture Overview
 
-* VPC with public subnets (multi-AZ)
-* Internet Gateway for public access
-* Application Load Balancer (HTTP :80)
-* Target Group (port 8000)
-* ECS Cluster (Fargate)
-* ECS Service + Task Definition
-* IAM execution role for ECS tasks
-* CloudWatch Log Group for container logs
+* Custom **VPC** with public subnets (multi-AZ)
+* **Internet Gateway** for external access
+* **ALB (HTTP :80)** routing traffic to ECS
+* **Target Group (port 8000)** for FastAPI
+* **ECS Cluster + Service (Fargate)**
+* **IAM Execution Role** (least privilege)
+* **CloudWatch Logs** for container output
+* **Terraform State persisted in S3**
 
 ---
 
 ## 🧩 Architecture Diagram
 
-Below is the **actual deployed architecture** for this project, exported from Figma and stored in the repository.
-
 ![AWS ECS FastAPI Architecture](assets/architecture_diagram.png)
 
-📌 **Architecture Highlights**
+**Highlights**
 
-* End users access the application via an **internet-facing Application Load Balancer (ALB)**
-* ALB routes traffic to an **ECS Target Group**
-* **ECS Service (Fargate)** runs containerized **FastAPI + Gradio** application
-* Infrastructure runs inside a **custom VPC with public subnets across multiple AZs**
-* **CloudWatch Logs** capture application and container logs
-
-🎯 This architecture reflects a **real-world ML inference deployment pattern** used in production systems
+* Users access the service via an **internet-facing ALB**
+* ALB forwards requests to an **ECS Target Group**
+* **FastAPI + Gradio** run as **Fargate tasks**
+* Infrastructure spans **multiple AZs** for resiliency
+* Terraform state is **decoupled from runners and stored in S3**
 
 ---
 
@@ -59,15 +56,15 @@ Below is the **actual deployed architecture** for this project, exported from Fi
 
 ```
 custmer_churn_ml_end_to_end_iac/
-├── alb.tf               # ALB, listener, target group
-├── ecs.tf               # ECS cluster, task definition, service
-├── iam.tf               # IAM roles and policies
-├── provider.tf          # AWS provider config
-├── security.tf          # Security groups
-├── vpc.tf               # VPC, subnets, IGW, route tables
-├── variables.tf         # Input variables
-├── outputs.tf           # Terraform outputs
-├── dev.tfvars           # Environment values (not committed)
+├── alb.tf                # ALB, listener, target group
+├── backend.tf            # S3 backend configuration
+├── ecs.tf                # ECS cluster, task definition, service
+├── iam.tf                # IAM roles and policies
+├── provider.tf           # AWS provider
+├── security.tf           # Security groups
+├── vpc.tf                # VPC, subnets, IGW, routes
+├── variables.tf          # Inputs
+├── outputs.tf            # Outputs (ALB DNS)
 ├── .gitignore
 └── README.md
 ```
@@ -76,13 +73,11 @@ custmer_churn_ml_end_to_end_iac/
 
 ## 🐳 Docker Image
 
-The ECS task uses the following Docker image:
-
 ```
 lohitsasanapuri/telco-fastapi:latest
 ```
 
-The FastAPI app listens on port **8000**.
+FastAPI listens on **port 8000**.
 
 ---
 
@@ -91,19 +86,29 @@ The FastAPI app listens on port **8000**.
 * AWS account
 * AWS CLI configured
 * Terraform v1.5+
-* Docker image already pushed to Docker Hub
+* Docker image pushed to Docker Hub
 
 ---
 
-## ✅ Deploy Infrastructure
+## 🛠 One-Time Setup (Remote State)
+
+Terraform **cannot create its own backend**. Create the S3 bucket **once** before running Terraform:
+
+```bash
+aws s3 mb s3://customer-churn-terraform-state --region us-east-1
+```
+
+---
+
+## 🚀 Deploy Infrastructure
 
 ```bash
 terraform init
-terraform plan 
-terraform apply
+terraform plan
+terraform apply -auto-approve
 ```
 
-After deployment, copy the **ALB DNS name** from Terraform output and open it in the browser.
+Open the **ALB DNS name** from outputs in your browser.
 
 ---
 
@@ -114,13 +119,11 @@ After deployment, copy the **ALB DNS name** from Terraform output and open it in
   ```http
   GET /
   ```
-
 * **Prediction API**
 
   ```http
   POST /predict
   ```
-
 * **Gradio UI**
 
   ```
@@ -129,38 +132,43 @@ After deployment, copy the **ALB DNS name** from Terraform output and open it in
 
 ---
 
+## 🔁 CI/CD – GitHub Actions
+
+The workflow supports **manual apply & destroy** using `workflow_dispatch`.
+
+**Steps**
+
+1. Go to **Actions → Terraform Deploy / Destroy**
+2. Click **Run workflow**
+3. Choose:
+
+   * `apply` → create/update infrastructure
+   * `destroy` → tear everything down
+
+**Required Secrets**
+
+* `AWS_ACCESS_KEY_ID`
+* `AWS_SECRET_ACCESS_KEY`
+
+(State is shared via S3, so CI and local runs stay in sync.)
+
+---
+
 ## 🧨 Destroy Infrastructure
 
 ```bash
-terraform destroy -var-file=dev.tfvars
+terraform destroy -auto-approve
 ```
 
----
-
-## 🔁 CI/CD (GitHub Actions)
-
-The project supports CI/CD using GitHub Actions to:
-
-* Deploy infrastructure (Terraform apply)
-* Destroy infrastructure (Terraform destroy)
-* Authenticate securely using GitHub Secrets (no manual login)
+Works whether the stack was created locally or from GitHub Actions.
 
 ---
 
-## 🔐 Security Notes
+## 📝 Important Notes
 
-* `*.tfvars` files are ignored from Git
-* IAM follows least-privilege
-* ECS tasks use execution role for logs and image pulls
-
----
-
-## 📝 Notes
-
-* ECS uses **Fargate**, no EC2 management required
+* Do **not** manage the S3 backend bucket inside Terraform
+* Remote state avoids lost infrastructure in CI
+* Fargate removes all EC2 management
 * Logs available in CloudWatch
-* ALB performs health checks on `/`
 
----
-
-✅ Infrastructure is fully reproducible using Terraform
+✅ Fully reproducible, CI-safe, and production-aligned infrastructure
